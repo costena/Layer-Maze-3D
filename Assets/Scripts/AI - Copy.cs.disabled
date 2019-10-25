@@ -1,0 +1,196 @@
+﻿using System;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class AI : MonoBehaviour
+{
+    public GameObject levelSpawner;
+    public GameObject effect;
+
+    private List<Vector3> wayPoints = new List<Vector3>();
+    public List<BlockType> aims = new List<BlockType>();
+    public List<int> nums = new List<int>();
+    public Block[,,] level;
+    private int towardIndex;
+    bool canGo = false;
+
+    private void Update()
+    {
+        const float cd = .3f;
+        if (Input.GetKeyDown(KeyCode.P)) {
+            canGo = true;
+            LoadWays();
+        }
+        if (canGo)
+        {
+            if ((transform.position - wayPoints[towardIndex]).magnitude < cd)
+            {
+                towardIndex--;
+                if (towardIndex < 0 || (transform.position - wayPoints[towardIndex]).magnitude > 3)
+                    canGo = false;
+            }
+            else
+            {
+                transform.Translate((wayPoints[towardIndex] - transform.position).normalized * Time.deltaTime * 6);
+                try
+                {
+                    float progress = (wayPoints[towardIndex] - transform.position).magnitude;
+                    transform.GetChild(0).LookAt(wayPoints[towardIndex - 2] * (1 - (progress<=0.2?0:progress>=0.8?1:(progress-.2f)/.6f)) + wayPoints[towardIndex - 1] * (progress <= 0.2 ? 0 : progress >= 0.8 ? 1 : (progress - .2f) / .6f));
+                    //transform.GetChild(0).GetChild(0).LookAt(wayPoints[towardIndex - 1] * Mathf.Sin(Mathf.PI / 2 * (1 - progress)) + wayPoints[towardIndex] * Mathf.Sin(Mathf.PI / 2 * progress));
+                }
+                catch (Exception) { }
+            }
+            
+        }
+    }
+
+    public void ReNew()
+    {
+        nums.Clear();
+        LoadWays();
+        canGo = true;
+    }
+
+    public void GoOn()
+    {
+        LoadWays();
+        canGo = true;
+    }
+
+    bool CanWalk(int x,int y,int z)
+    {
+        if(level[x,y,z].type==BlockType.Air || level[x, y, z].type == BlockType.Key || level[x,y,z].type==BlockType.Start || level[x,y,z].type==BlockType.Exit || level[x,y,z].type==BlockType.Bonus)
+        {
+            return true;
+        }
+        if(level[x,y,z].type==BlockType.Lock && nums.Contains(level[x, y, z].index))
+        {
+            return true;
+        }
+        return false;
+    }
+
+    bool IsAim(int x,int y,int z)
+    {
+        if (level[x,y,z].type==BlockType.Key || level[x,y,z].type==BlockType.Bonus)
+        {
+            return true;
+        }
+        else if (level[x, y, z].type == BlockType.Lock)
+        {
+            if (nums.Contains(level[x, y, z].index))
+            {
+                return true;
+            }
+        }
+        else if (level[x, y, z].type == BlockType.Exit)
+        {
+            if (GetComponent<Bag>().score == GetComponent<Bag>().target)
+            {
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    public void LoadWays()
+    {
+        int[,,] distances = new int[15, 15, 15];
+        List<V3>[] workSet = new List<V3>[1000];
+        int currentDistance = 0;
+        for (int i = 0; i < workSet.Length; i++)
+        {
+            workSet[i] = new List<V3>();
+        }
+        nums.Add(0);
+        workSet[0].Add(new V3(Mathf.RoundToInt(transform.position.x), Mathf.RoundToInt(transform.position.y), Mathf.RoundToInt(transform.position.z), 0));
+        bool keepOn = true;
+        int exitIndex = 0;
+        int exitDistance = 0;
+        while (keepOn)
+        {
+            if (currentDistance < 1000) currentDistance++;
+            else { break; }
+            for(int i = 0;i<workSet[currentDistance-1].Count;i++)
+            {
+                V3 currentPosition = workSet[currentDistance - 1][i];
+                if (currentPosition.x > 0 && CanWalk(currentPosition.x - 1, currentPosition.y, currentPosition.z) && distances[currentPosition.x - 1, currentPosition.y, currentPosition.z] == 0)
+                {
+                    workSet[currentDistance].Add(new V3(currentPosition.x - 1, currentPosition.y, currentPosition.z, i));
+                    distances[currentPosition.x - 1, currentPosition.y, currentPosition.z] = currentDistance;
+                }
+                if (currentPosition.x < 14 && CanWalk(currentPosition.x + 1, currentPosition.y, currentPosition.z) && distances[currentPosition.x + 1, currentPosition.y, currentPosition.z] == 0)
+                {
+                    workSet[currentDistance].Add(new V3(currentPosition.x + 1, currentPosition.y, currentPosition.z,i));
+                    distances[currentPosition.x + 1, currentPosition.y, currentPosition.z] = currentDistance;
+                }
+                if (currentPosition.y > 0 && CanWalk(currentPosition.x, currentPosition.y - 1, currentPosition.z) && distances[currentPosition.x, currentPosition.y - 1, currentPosition.z] == 0)
+                {
+                    workSet[currentDistance].Add(new V3(currentPosition.x, currentPosition.y - 1, currentPosition.z,i));
+                    distances[currentPosition.x, currentPosition.y - 1, currentPosition.z] = currentDistance;
+                }
+                if (currentPosition.y < 14 && CanWalk(currentPosition.x, currentPosition.y + 1, currentPosition.z) && distances[currentPosition.x, currentPosition.y + 1, currentPosition.z] == 0)
+                {
+                    workSet[currentDistance].Add(new V3(currentPosition.x, currentPosition.y + 1, currentPosition.z,i));
+                    distances[currentPosition.x, currentPosition.y + 1, currentPosition.z] = currentDistance;
+                }
+                if (currentPosition.z > 0 && CanWalk(currentPosition.x, currentPosition.y, currentPosition.z - 1) && distances[currentPosition.x, currentPosition.y, currentPosition.z - 1] == 0)
+                {
+                    workSet[currentDistance].Add(new V3(currentPosition.x, currentPosition.y, currentPosition.z - 1,i));
+                    distances[currentPosition.x, currentPosition.y, currentPosition.z - 1] = currentDistance;
+                }
+                if (currentPosition.z < 14 && CanWalk(currentPosition.x, currentPosition.y, currentPosition.z + 1) && distances[currentPosition.x, currentPosition.y, currentPosition.z + 1] == 0)
+                {
+                    workSet[currentDistance].Add(new V3(currentPosition.x, currentPosition.y, currentPosition.z + 1,i));
+                    distances[currentPosition.x, currentPosition.y, currentPosition.z + 1] = currentDistance;
+                }
+                if (IsAim(currentPosition.x, currentPosition.y, currentPosition.z))
+                {
+                    keepOn = false;exitIndex = i;exitDistance = currentDistance;
+                    break;
+                }
+            }
+        }
+        int nxt = exitIndex;
+        wayPoints.Clear();
+        for(int i = exitDistance - 1; i >= 0; i--)
+        {
+            if (workSet[i].Count == 0) continue;
+            wayPoints.Add(new Vector3(workSet[i][nxt].x, workSet[i][nxt].y, workSet[i][nxt].z));
+            nxt = workSet[i][nxt].beforeIndex;
+        }
+        //for (int i = 0; i < wayPoints.Count; i++)
+        //{
+        //    Instantiate(effect, wayPoints[i], Quaternion.identity);
+        //}
+        towardIndex = wayPoints.Count - 1;
+    }
+}
+
+public class V3
+{
+    public int x;
+    public int y;
+    public int z;
+    public int beforeIndex;
+
+    public V3(int x, int y, int z, int i)
+    {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.beforeIndex = i;
+    }
+
+    public Vector3 ToVector3()
+    {
+        return new Vector3(x, y, z);
+    }
+
+    
+}
